@@ -267,8 +267,8 @@ const Index = () => {
     messages
       .filter(
         (m) =>
-          (m.fromId === currentUser!.id && m.toId === userId) ||
-          (m.fromId === userId && m.toId === currentUser!.id)
+          (m.fromId === (currentUser?.id ?? "") && m.toId === userId) ||
+          (m.fromId === userId && m.toId === (currentUser?.id ?? ""))
       )
       .sort((a, b) => a.timestamp - b.timestamp);
 
