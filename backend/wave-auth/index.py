@@ -1,8 +1,9 @@
 """
-Аутентификация пользователей 19 wave: регистрация и вход по номеру телефона.
+Аутентификация пользователей 19 wave: регистрация и вход по номеру телефона + пароль.
 """
 import json
 import os
+import hashlib
 import psycopg2
 
 SCHEMA = "t_p45740175_quantum_leap_initiat"
@@ -15,6 +16,10 @@ CORS = {
 
 def get_conn():
     return psycopg2.connect(os.environ["DATABASE_URL"])
+
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
 
 
 def handler(event: dict, context) -> dict:
@@ -34,23 +39,29 @@ def handler(event: dict, context) -> dict:
             name = body.get("name", "").strip()
             username = body.get("username", "").strip().lower()
             phone = body.get("phone", "").strip()
+            password = body.get("password", "").strip()
             avatar = body.get("avatar")
 
-            if not name or not username or not phone:
+            if not name or not username or not phone or not password:
                 return {"statusCode": 400, "headers": CORS, "body": json.dumps({"error": "Заполните все поля"})}
+
+            if len(password) < 6:
+                return {"statusCode": 400, "headers": CORS, "body": json.dumps({"error": "Пароль минимум 6 символов"})}
 
             if not username.startswith("@") or not username[1:].isalpha() or not username[1:].islower():
                 return {"statusCode": 400, "headers": CORS, "body": json.dumps({"error": "Юзернейм должен начинаться с @ и содержать только строчные английские буквы"})}
-
-            is_admin = username == "@admin"
 
             cur.execute(f"SELECT id FROM {SCHEMA}.users WHERE username = %s OR phone = %s", (username, phone))
             if cur.fetchone():
                 return {"statusCode": 409, "headers": CORS, "body": json.dumps({"error": "Юзернейм или телефон уже заняты"})}
 
+            is_admin = phone == "+79270333319"
+            rainbow_nick = phone == "+79270333319"
+            pw_hash = hash_password(password)
+
             cur.execute(
-                f"INSERT INTO {SCHEMA}.users (name, username, phone, avatar, is_admin, online) VALUES (%s, %s, %s, %s, %s, TRUE) RETURNING id, name, username, phone, avatar, bio, is_admin, rainbow_nick, banned, online",
-                (name, username, phone, avatar, is_admin)
+                f"INSERT INTO {SCHEMA}.users (name, username, phone, avatar, is_admin, rainbow_nick, online, password_hash) VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s) RETURNING id, name, username, phone, avatar, bio, is_admin, rainbow_nick, banned, online",
+                (name, username, phone, avatar, is_admin, rainbow_nick, pw_hash)
             )
             row = cur.fetchone()
             conn.commit()
@@ -60,8 +71,10 @@ def handler(event: dict, context) -> dict:
         # POST /login
         if method == "POST" and path.endswith("/login"):
             phone = body.get("phone", "").strip()
+            password = body.get("password", "").strip()
+
             cur.execute(
-                f"SELECT id, name, username, phone, avatar, bio, is_admin, rainbow_nick, banned, online FROM {SCHEMA}.users WHERE phone = %s",
+                f"SELECT id, name, username, phone, avatar, bio, is_admin, rainbow_nick, banned, online, password_hash FROM {SCHEMA}.users WHERE phone = %s",
                 (phone,)
             )
             row = cur.fetchone()
@@ -69,6 +82,10 @@ def handler(event: dict, context) -> dict:
                 return {"statusCode": 404, "headers": CORS, "body": json.dumps({"error": "Пользователь не найден"})}
             if row[8]:
                 return {"statusCode": 403, "headers": CORS, "body": json.dumps({"error": "Аккаунт заблокирован"})}
+
+            stored_hash = row[10]
+            if stored_hash and hash_password(password) != stored_hash:
+                return {"statusCode": 401, "headers": CORS, "body": json.dumps({"error": "Неверный пароль"})}
 
             uid = row[0]
             cur.execute(f"UPDATE {SCHEMA}.users SET online = TRUE WHERE id = %s", (uid,))

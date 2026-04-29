@@ -1,0 +1,1 @@
+ALTER TABLE t_p45740175_quantum_leap_initiat.users ADD COLUMN password_hash TEXT;

@@ -112,9 +112,11 @@ const Index = () => {
   const [regName, setRegName] = useState("");
   const [regUsername, setRegUsername] = useState("");
   const [regPhone, setRegPhone] = useState("");
+  const [regPassword, setRegPassword] = useState("");
   const [regAvatar, setRegAvatar] = useState<string | null>(null);
   const [regError, setRegError] = useState("");
   const [loginPhone, setLoginPhone] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -249,8 +251,9 @@ const Index = () => {
     if (!regName.trim()) return setRegError("Введите имя");
     if (!regUsername.startsWith("@") || !/^@[a-z]+$/.test(regUsername)) return setRegError("Юзернейм: @ + только строчные английские буквы");
     if (!regPhone.trim()) return setRegError("Введите номер телефона");
+    if (regPassword.length < 6) return setRegError("Пароль минимум 6 символов");
     setAuthLoading(true);
-    const res = await api(AUTH_URL, "/register", { method: "POST", body: JSON.stringify({ name: regName.trim(), username: regUsername, phone: regPhone.trim(), avatar: regAvatar }) });
+    const res = await api(AUTH_URL, "/register", { method: "POST", body: JSON.stringify({ name: regName.trim(), username: regUsername, phone: regPhone.trim(), password: regPassword, avatar: regAvatar }) });
     setAuthLoading(false);
     if (!res.ok) return setRegError(res.data?.error || "Ошибка регистрации");
     const user = res.data.user;
@@ -261,7 +264,7 @@ const Index = () => {
   const handleLogin = async () => {
     setLoginError("");
     setAuthLoading(true);
-    const res = await api(AUTH_URL, "/login", { method: "POST", body: JSON.stringify({ phone: loginPhone.trim() }) });
+    const res = await api(AUTH_URL, "/login", { method: "POST", body: JSON.stringify({ phone: loginPhone.trim(), password: loginPassword }) });
     setAuthLoading(false);
     if (!res.ok) return setLoginError(res.data?.error || "Ошибка входа");
     const user = res.data.user;
@@ -433,6 +436,7 @@ const Index = () => {
                 <input className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] placeholder-[#5c5f66]" placeholder="Ваше имя" value={regName} onChange={(e) => setRegName(e.target.value)} />
                 <input className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] placeholder-[#5c5f66]" placeholder="@username" value={regUsername} onChange={(e) => setRegUsername(e.target.value)} />
                 <input className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] placeholder-[#5c5f66]" placeholder="Номер телефона" value={regPhone} onChange={(e) => setRegPhone(e.target.value)} />
+                <input type="password" className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] placeholder-[#5c5f66]" placeholder="Пароль (минимум 6 символов)" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} />
                 {regError && <p className="text-[#ed4245] text-xs">{regError}</p>}
                 <button onClick={handleRegister} disabled={authLoading} className="w-full py-3 rounded-xl text-white font-semibold transition-all hover:opacity-90 disabled:opacity-60" style={{ background: "linear-gradient(135deg,#6C63FF,#a855f7)" }}>
                   {authLoading ? "Создание..." : "Создать аккаунт"}
@@ -440,7 +444,8 @@ const Index = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                <input className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] placeholder-[#5c5f66]" placeholder="Номер телефона" value={loginPhone} onChange={(e) => setLoginPhone(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleLogin()} />
+                <input className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] placeholder-[#5c5f66]" placeholder="Номер телефона" value={loginPhone} onChange={(e) => setLoginPhone(e.target.value)} />
+                <input type="password" className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] placeholder-[#5c5f66]" placeholder="Пароль" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleLogin()} />
                 {loginError && <p className="text-[#ed4245] text-xs">{loginError}</p>}
                 <button onClick={handleLogin} disabled={authLoading} className="w-full py-3 rounded-xl text-white font-semibold transition-all hover:opacity-90 disabled:opacity-60" style={{ background: "linear-gradient(135deg,#6C63FF,#a855f7)" }}>
                   {authLoading ? "Вход..." : "Войти"}
