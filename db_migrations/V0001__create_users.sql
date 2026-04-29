@@ -1,0 +1,14 @@
+CREATE TABLE t_p45740175_quantum_leap_initiat.users (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  name TEXT NOT NULL,
+  username TEXT NOT NULL UNIQUE,
+  phone TEXT NOT NULL UNIQUE,
+  avatar TEXT,
+  bio TEXT DEFAULT '',
+  is_admin BOOLEAN DEFAULT FALSE,
+  rainbow_nick BOOLEAN DEFAULT FALSE,
+  banned BOOLEAN DEFAULT FALSE,
+  online BOOLEAN DEFAULT FALSE,
+  last_seen BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+  created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+);
