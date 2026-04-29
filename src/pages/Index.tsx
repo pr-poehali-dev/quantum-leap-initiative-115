@@ -1,469 +1,1071 @@
-import { useState } from "react";
-import {
-  Download,
-  Shield,
-  Zap,
-  Eye,
-  Clock,
-  Github,
-  ArrowRight,
-  Hash,
-  Users,
-  Mic,
-  Settings,
-  Bell,
-  Search,
-  Menu,
-  X,
-  Monitor,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState, useRef, useEffect } from "react";
+import Icon from "@/components/ui/icon";
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+type Badge = { id: string; label: string; color: string };
+type User = {
+  id: string;
+  name: string;
+  username: string;
+  phone: string;
+  avatar: string | null;
+  bio: string;
+  online: boolean;
+  isAdmin: boolean;
+  rainbowNick: boolean;
+  badges: Badge[];
+  banned: boolean;
+};
+type Message = {
+  id: string;
+  fromId: string;
+  toId: string;
+  text: string;
+  image?: string;
+  audio?: string;
+  timestamp: number;
+};
+type Tab = "chats" | "contacts" | "ai" | "admin" | "settings";
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const ADMIN_USERNAME = "@admin";
+const WAVE_ACCENT = "#6C63FF";
+
+const availableBadges: Badge[] = [
+  { id: "verified", label: "✓ Верифицирован", color: "#3ba55c" },
+  { id: "og", label: "⭐ OG", color: "#faa61a" },
+  { id: "dev", label: "🛠 Разработчик", color: "#5865f2" },
+  { id: "top", label: "🔥 Топ пользователь", color: "#ed4245" },
+  { id: "wave", label: "🌊 19 wave", color: "#6C63FF" },
+];
+
+const generateId = () => Math.random().toString(36).slice(2);
+
+const formatTime = (ts: number) => {
+  const d = new Date(ts);
+  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+};
+
+const getInitials = (name: string) => name.charAt(0).toUpperCase();
+
+const RainbowText = ({ text }: { text: string }) => (
+  <span
+    style={{
+      background: "linear-gradient(90deg,#ff0000,#ff7700,#ffff00,#00ff00,#0000ff,#8b00ff)",
+      WebkitBackgroundClip: "text",
+      WebkitTextFillColor: "transparent",
+      backgroundClip: "text",
+      fontWeight: 700,
+    }}
+  >
+    {text}
+  </span>
+);
+
+// ─── Demo seed data ──────────────────────────────────────────────────────────
+const seedUsers: User[] = [
+  {
+    id: "u1",
+    name: "Алекс",
+    username: "@alex",
+    phone: "+79001234567",
+    avatar: null,
+    bio: "Люблю музыку и волны 🌊",
+    online: true,
+    isAdmin: false,
+    rainbowNick: false,
+    badges: [availableBadges[1]],
+    banned: false,
+  },
+  {
+    id: "u2",
+    name: "Маша",
+    username: "@masha",
+    phone: "+79007654321",
+    avatar: null,
+    bio: "Дизайнер интерфейсов",
+    online: false,
+    isAdmin: false,
+    rainbowNick: true,
+    badges: [availableBadges[0], availableBadges[2]],
+    banned: false,
+  },
+  {
+    id: "u3",
+    name: "Даня",
+    username: "@danya",
+    phone: "+79001112233",
+    avatar: null,
+    bio: "Frontend dev 🚀",
+    online: true,
+    isAdmin: false,
+    rainbowNick: false,
+    badges: [availableBadges[4]],
+    banned: false,
+  },
+];
+
+const seedMessages: Message[] = [
+  { id: "m1", fromId: "u1", toId: "ADMIN", text: "Привет! Как дела?", timestamp: Date.now() - 3600000 },
+  { id: "m2", fromId: "ADMIN", toId: "u1", text: "Всё отлично, спасибо!", timestamp: Date.now() - 3500000 },
+  { id: "m3", fromId: "u2", toId: "ADMIN", text: "Посмотри мой дизайн", timestamp: Date.now() - 1800000 },
+  { id: "m4", fromId: "ADMIN", toId: "u2", text: "Выглядит классно!", timestamp: Date.now() - 1700000 },
+  { id: "m5", fromId: "u3", toId: "ADMIN", text: "Новая волна 🌊", timestamp: Date.now() - 900000 },
+];
+
+// ─── Avatar component ────────────────────────────────────────────────────────
+const Avatar = ({
+  user,
+  size = 40,
+  showOnline = false,
+}: {
+  user: { name: string; avatar: string | null; online?: boolean };
+  size?: number;
+  showOnline?: boolean;
+}) => (
+  <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+    {user.avatar ? (
+      <img
+        src={user.avatar}
+        alt={user.name}
+        className="rounded-full object-cover w-full h-full"
+        style={{ width: size, height: size }}
+      />
+    ) : (
+      <div
+        className="rounded-full flex items-center justify-center text-white font-bold"
+        style={{
+          width: size,
+          height: size,
+          background: "linear-gradient(135deg,#6C63FF,#a855f7)",
+          fontSize: size * 0.4,
+        }}
+      >
+        {getInitials(user.name)}
+      </div>
+    )}
+    {showOnline && user.online !== undefined && (
+      <div
+        className={`absolute bottom-0 right-0 rounded-full border-2 border-[#1e1f22] ${user.online ? "bg-[#3ba55c]" : "bg-[#80848e]"}`}
+        style={{ width: size * 0.28, height: size * 0.28 }}
+      />
+    )}
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Main component
+// ═══════════════════════════════════════════════════════════════════════════
 const Index = () => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  // ── Auth state ──
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [users, setUsers] = useState<User[]>(seedUsers);
+  const [messages, setMessages] = useState<Message[]>(seedMessages);
 
-  return (
-    <div className="min-h-screen bg-[#36393f] text-white overflow-x-hidden">
-      {/* Навигация в стиле Discord */}
-      <nav className="bg-[#2f3136] border-b border-[#202225] px-4 sm:px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#5865f2] rounded-full flex items-center justify-center">
-              <Monitor className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+  // ── Register form ──
+  const [regName, setRegName] = useState("");
+  const [regUsername, setRegUsername] = useState("");
+  const [regPhone, setRegPhone] = useState("");
+  const [regAvatar, setRegAvatar] = useState<string | null>(null);
+  const [regError, setRegError] = useState("");
+
+  // ── Login form ──
+  const [loginPhone, setLoginPhone] = useState("");
+  const [loginError, setLoginError] = useState("");
+
+  // ── Main app state ──
+  const [activeTab, setActiveTab] = useState<Tab>("chats");
+  const [openChatUserId, setOpenChatUserId] = useState<string | null>(null);
+  const [viewProfileId, setViewProfileId] = useState<string | null>(null);
+  const [chatText, setChatText] = useState("");
+  const [chatImage, setChatImage] = useState<string | null>(null);
+
+  // ── Settings ──
+  const [settingsName, setSettingsName] = useState("");
+  const [settingsBio, setSettingsBio] = useState("");
+  const [settingsAvatar, setSettingsAvatar] = useState<string | null>(null);
+
+  // ── Admin panel ──
+  const [adminSearch, setAdminSearch] = useState("");
+  const [adminBadgeUserId, setAdminBadgeUserId] = useState<string | null>(null);
+  const [adminViewChatId, setAdminViewChatId] = useState<string | null>(null);
+
+  // ── Recording ──
+  const [recording, setRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatFileRef = useRef<HTMLInputElement>(null);
+  const regAvatarRef = useRef<HTMLInputElement>(null);
+  const settingsAvatarRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, openChatUserId]);
+
+  // ── Init settings from currentUser ──
+  useEffect(() => {
+    if (currentUser) {
+      setSettingsName(currentUser.name);
+      setSettingsBio(currentUser.bio);
+      setSettingsAvatar(currentUser.avatar);
+    }
+  }, [currentUser]);
+
+  // ─── Auth handlers ────────────────────────────────────────────────────────
+  const handleRegister = () => {
+    setRegError("");
+    if (!regName.trim()) return setRegError("Введите имя");
+    if (!regUsername.startsWith("@") || !/^@[a-z]+$/.test(regUsername))
+      return setRegError("Юзернейм должен начинаться с @ и содержать только строчные английские буквы");
+    if (users.find((u) => u.username === regUsername))
+      return setRegError("Этот юзернейм уже занят");
+    if (!regPhone.trim()) return setRegError("Введите номер телефона");
+
+    const isAdmin = regUsername === ADMIN_USERNAME;
+    const newUser: User = {
+      id: generateId(),
+      name: regName.trim(),
+      username: regUsername,
+      phone: regPhone.trim(),
+      avatar: regAvatar,
+      bio: "",
+      online: true,
+      isAdmin,
+      rainbowNick: false,
+      badges: [],
+      banned: false,
+    };
+    setUsers((prev) => [...prev, newUser]);
+    setCurrentUser(newUser);
+  };
+
+  const handleLogin = () => {
+    setLoginError("");
+    const found = users.find((u) => u.phone === loginPhone.trim());
+    if (!found) return setLoginError("Пользователь с таким номером не найден");
+    if (found.banned) return setLoginError("Ваш аккаунт заблокирован");
+    setCurrentUser({ ...found, online: true });
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setActiveTab("chats");
+    setOpenChatUserId(null);
+  };
+
+  // ─── Image helpers ────────────────────────────────────────────────────────
+  const readFile = (file: File, cb: (b64: string) => void) => {
+    const reader = new FileReader();
+    reader.onload = (e) => cb(e.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  // ─── Chat helpers ─────────────────────────────────────────────────────────
+  const getConversation = (userId: string) =>
+    messages
+      .filter(
+        (m) =>
+          (m.fromId === currentUser!.id && m.toId === userId) ||
+          (m.fromId === userId && m.toId === currentUser!.id)
+      )
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+  const getLastMessage = (userId: string) => {
+    const conv = getConversation(userId);
+    return conv[conv.length - 1] ?? null;
+  };
+
+  const sendMessage = () => {
+    if (!chatText.trim() && !chatImage) return;
+    const msg: Message = {
+      id: generateId(),
+      fromId: currentUser!.id,
+      toId: openChatUserId!,
+      text: chatText.trim(),
+      image: chatImage ?? undefined,
+      timestamp: Date.now(),
+    };
+    setMessages((prev) => [...prev, msg]);
+    setChatText("");
+    setChatImage(null);
+  };
+
+  // ─── Voice recording ──────────────────────────────────────────────────────
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      mr.ondataavailable = (e) => audioChunksRef.current.push(e.data);
+      mr.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const url = URL.createObjectURL(blob);
+        const msg: Message = {
+          id: generateId(),
+          fromId: currentUser!.id,
+          toId: openChatUserId!,
+          text: "",
+          audio: url,
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, msg]);
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      mr.start();
+      mediaRecorderRef.current = mr;
+      setRecording(true);
+    } catch {
+      alert("Нет доступа к микрофону");
+    }
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    setRecording(false);
+  };
+
+  // ─── Settings save ────────────────────────────────────────────────────────
+  const saveSettings = () => {
+    if (!settingsName.trim()) return;
+    const updated: User = {
+      ...currentUser!,
+      name: settingsName.trim(),
+      bio: settingsBio.trim(),
+      avatar: settingsAvatar,
+    };
+    setCurrentUser(updated);
+    setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+  };
+
+  // ─── Admin actions ────────────────────────────────────────────────────────
+  const adminBan = (id: string) => {
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, banned: !u.banned } : u)));
+  };
+  const adminRainbow = (id: string) => {
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, rainbowNick: !u.rainbowNick } : u)));
+  };
+  const adminGiveBadge = (userId: string, badge: Badge) => {
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === userId
+          ? {
+              ...u,
+              badges: u.badges.find((b) => b.id === badge.id)
+                ? u.badges.filter((b) => b.id !== badge.id)
+                : [...u.badges, badge],
+            }
+          : u
+      )
+    );
+  };
+
+  // ─── Profile view ─────────────────────────────────────────────────────────
+  const profileUser = viewProfileId ? users.find((u) => u.id === viewProfileId) ?? null : null;
+
+  // ─── Sorted chat list ─────────────────────────────────────────────────────
+  const chatList = users
+    .filter((u) => u.id !== currentUser?.id)
+    .map((u) => ({ user: u, last: getLastMessage(u.id) }))
+    .sort((a, b) => (b.last?.timestamp ?? 0) - (a.last?.timestamp ?? 0));
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // AUTH SCREEN
+  // ─────────────────────────────────────────────────────────────────────────
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-[#1e1f22] flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <div
+              className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4"
+              style={{ background: "linear-gradient(135deg,#6C63FF,#a855f7)" }}
+            >
+              <span className="text-white text-3xl font-black">19</span>
             </div>
-            <div>
-              <h1 className="text-lg sm:text-xl font-bold text-white">Дискордик</h1>
-              <p className="text-xs text-[#b9bbbe] hidden sm:block">Rich Presence для Figma в Discord</p>
+            <h1 className="text-3xl font-black text-white tracking-tight">19 wave</h1>
+            <p className="text-[#8e9297] mt-1 text-sm">Мессенджер нового поколения</p>
+          </div>
+
+          <div className="bg-[#2b2d31] rounded-2xl p-6 shadow-2xl">
+            {/* Tabs */}
+            <div className="flex bg-[#1e1f22] rounded-xl p-1 mb-6">
+              {(["login", "register"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    setAuthMode(m);
+                    setLoginError("");
+                    setRegError("");
+                  }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+                    authMode === m ? "bg-[#6C63FF] text-white" : "text-[#8e9297] hover:text-white"
+                  }`}
+                >
+                  {m === "login" ? "Войти" : "Регистрация"}
+                </button>
+              ))}
             </div>
+
+            {authMode === "register" ? (
+              <div className="space-y-4">
+                {/* Avatar upload */}
+                <div className="flex justify-center">
+                  <button
+                    onClick={() => regAvatarRef.current?.click()}
+                    className="relative group"
+                  >
+                    {regAvatar ? (
+                      <img
+                        src={regAvatar}
+                        alt="avatar"
+                        className="w-20 h-20 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div
+                        className="w-20 h-20 rounded-full flex flex-col items-center justify-center border-2 border-dashed border-[#6C63FF] text-[#6C63FF] hover:bg-[#6C63FF]/10 transition-all"
+                      >
+                        <Icon name="Camera" size={24} />
+                        <span className="text-xs mt-1">Фото</span>
+                      </div>
+                    )}
+                    <input
+                      ref={regAvatarRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) readFile(f, setRegAvatar);
+                      }}
+                    />
+                  </button>
+                </div>
+                <input
+                  className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] placeholder-[#5c5f66]"
+                  placeholder="Ваше имя"
+                  value={regName}
+                  onChange={(e) => setRegName(e.target.value)}
+                />
+                <input
+                  className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] placeholder-[#5c5f66]"
+                  placeholder="@username (только строчные англ. буквы)"
+                  value={regUsername}
+                  onChange={(e) => setRegUsername(e.target.value)}
+                />
+                <input
+                  className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] placeholder-[#5c5f66]"
+                  placeholder="Номер телефона"
+                  value={regPhone}
+                  onChange={(e) => setRegPhone(e.target.value)}
+                />
+                {regError && <p className="text-[#ed4245] text-xs">{regError}</p>}
+                <button
+                  onClick={handleRegister}
+                  className="w-full py-3 rounded-xl text-white font-semibold transition-all hover:opacity-90"
+                  style={{ background: "linear-gradient(135deg,#6C63FF,#a855f7)" }}
+                >
+                  Создать аккаунт
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <input
+                  className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] placeholder-[#5c5f66]"
+                  placeholder="Номер телефона"
+                  value={loginPhone}
+                  onChange={(e) => setLoginPhone(e.target.value)}
+                />
+                {loginError && <p className="text-[#ed4245] text-xs">{loginError}</p>}
+                <button
+                  onClick={handleLogin}
+                  className="w-full py-3 rounded-xl text-white font-semibold transition-all hover:opacity-90"
+                  style={{ background: "linear-gradient(135deg,#6C63FF,#a855f7)" }}
+                >
+                  Войти
+                </button>
+              </div>
+            )}
           </div>
-          <div className="hidden sm:flex items-center gap-4">
-            <Button variant="ghost" className="text-[#b9bbbe] hover:text-white hover:bg-[#40444b]">
-              <Github className="w-4 h-4 mr-2" />
-              GitHub
-            </Button>
-            <Button className="bg-[#5865f2] hover:bg-[#4752c4] text-white px-6 py-2 rounded text-sm font-medium">
-              Скачать
-            </Button>
-          </div>
-          <Button
-            variant="ghost"
-            className="sm:hidden text-[#b9bbbe] hover:text-white hover:bg-[#40444b] p-2"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        </div>
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PROFILE MODAL
+  // ─────────────────────────────────────────────────────────────────────────
+  if (profileUser) {
+    return (
+      <div className="min-h-screen bg-[#1e1f22] flex items-center justify-center p-4">
+        <div className="w-full max-w-sm bg-[#2b2d31] rounded-2xl overflow-hidden shadow-2xl">
+          {/* Banner */}
+          <div
+            className="h-24 relative"
+            style={{ background: "linear-gradient(135deg,#6C63FF,#a855f7)" }}
           >
-            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </Button>
+            <button
+              onClick={() => setViewProfileId(null)}
+              className="absolute top-3 right-3 text-white/70 hover:text-white"
+            >
+              <Icon name="X" size={20} />
+            </button>
+            <div className="absolute -bottom-8 left-4">
+              <Avatar user={profileUser} size={64} />
+            </div>
+          </div>
+          <div className="pt-12 px-4 pb-4">
+            <div className="mb-3">
+              {profileUser.rainbowNick ? (
+                <RainbowText text={profileUser.name} />
+              ) : (
+                <span className="text-white text-xl font-bold">{profileUser.name}</span>
+              )}
+              <p className="text-[#8e9297] text-sm">{profileUser.username}</p>
+              {profileUser.bio && (
+                <p className="text-[#dcddde] text-sm mt-2">{profileUser.bio}</p>
+              )}
+            </div>
+            {profileUser.badges.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {profileUser.badges.map((b) => (
+                  <span
+                    key={b.id}
+                    className="px-2 py-0.5 rounded-full text-xs font-semibold text-white"
+                    style={{ background: b.color }}
+                  >
+                    {b.label}
+                  </span>
+                ))}
+              </div>
+            )}
+            {profileUser.id !== currentUser.id && (
+              <button
+                onClick={() => {
+                  setViewProfileId(null);
+                  setOpenChatUserId(profileUser.id);
+                  setActiveTab("chats");
+                }}
+                className="mt-4 w-full py-2 rounded-xl text-white text-sm font-semibold"
+                style={{ background: WAVE_ACCENT }}
+              >
+                Написать
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // OPEN CHAT
+  // ─────────────────────────────────────────────────────────────────────────
+  if (openChatUserId) {
+    const chatPartner = users.find((u) => u.id === openChatUserId)!;
+    const conversation = getConversation(openChatUserId);
+
+    return (
+      <div className="min-h-screen bg-[#313338] flex flex-col">
+        {/* Header */}
+        <div className="h-14 bg-[#2b2d31] border-b border-[#1e1f22] flex items-center px-4 gap-3 flex-shrink-0">
+          <button
+            onClick={() => setOpenChatUserId(null)}
+            className="text-[#8e9297] hover:text-white transition-colors"
+          >
+            <Icon name="ArrowLeft" size={20} />
+          </button>
+          <button
+            onClick={() => setViewProfileId(chatPartner.id)}
+            className="flex items-center gap-3 flex-1 min-w-0"
+          >
+            <Avatar user={chatPartner} size={36} showOnline />
+            <div className="min-w-0">
+              <div className="text-white font-semibold text-sm truncate">
+                {chatPartner.rainbowNick ? (
+                  <RainbowText text={chatPartner.name} />
+                ) : (
+                  chatPartner.name
+                )}
+              </div>
+              <div className="text-[#3ba55c] text-xs">
+                {chatPartner.online ? "онлайн" : "был(а) недавно"}
+              </div>
+            </div>
+          </button>
+          <button
+            onClick={() => setViewProfileId(currentUser.id)}
+            className="flex-shrink-0"
+          >
+            <Avatar user={currentUser} size={32} />
+          </button>
         </div>
 
-        {/* Мобильное меню */}
-        {mobileMenuOpen && (
-          <div className="sm:hidden mt-4 pt-4 border-t border-[#202225]">
-            <div className="flex flex-col gap-3">
-              <Button variant="ghost" className="text-[#b9bbbe] hover:text-white hover:bg-[#40444b] justify-start">
-                <Github className="w-4 h-4 mr-2" />
-                GitHub
-              </Button>
-              <Button className="bg-[#5865f2] hover:bg-[#4752c4] text-white px-6 py-2 rounded text-sm font-medium">
-                Скачать
-              </Button>
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {conversation.length === 0 && (
+            <div className="text-center text-[#8e9297] text-sm mt-8">
+              Начните общение! Напишите первое сообщение 👋
             </div>
+          )}
+          {conversation.map((msg) => {
+            const isMe = msg.fromId === currentUser.id;
+            return (
+              <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"} gap-2`}>
+                {!isMe && (
+                  <button onClick={() => setViewProfileId(msg.fromId)}>
+                    <Avatar user={chatPartner} size={32} />
+                  </button>
+                )}
+                <div
+                  className={`max-w-[70%] rounded-2xl px-4 py-2 ${
+                    isMe ? "rounded-br-sm" : "rounded-bl-sm"
+                  }`}
+                  style={{
+                    background: isMe
+                      ? "linear-gradient(135deg,#6C63FF,#a855f7)"
+                      : "#383a40",
+                  }}
+                >
+                  {msg.image && (
+                    <img
+                      src={msg.image}
+                      alt=""
+                      className="rounded-xl mb-2 max-w-full"
+                      style={{ maxHeight: 200 }}
+                    />
+                  )}
+                  {msg.audio && (
+                    <audio controls src={msg.audio} className="max-w-full" />
+                  )}
+                  {msg.text && (
+                    <p className="text-white text-sm">{msg.text}</p>
+                  )}
+                  <p className="text-white/50 text-xs mt-1 text-right">
+                    {formatTime(msg.timestamp)}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Image preview */}
+        {chatImage && (
+          <div className="px-4 pb-2 flex items-center gap-2">
+            <img src={chatImage} alt="" className="h-16 rounded-xl" />
+            <button onClick={() => setChatImage(null)} className="text-[#ed4245]">
+              <Icon name="X" size={16} />
+            </button>
           </div>
         )}
-      </nav>
 
-      {/* Макет в стиле Discord */}
-      <div className="flex min-h-screen">
-        {/* Боковая панель серверов - скрыта на мобильных */}
-        <div className="hidden lg:flex w-[72px] bg-[#202225] flex-col items-center py-3 gap-2">
-          <div className="w-12 h-12 bg-[#5865f2] rounded-2xl hover:rounded-xl transition-all duration-200 flex items-center justify-center cursor-pointer">
-            <Monitor className="w-6 h-6 text-white" />
+        {/* Input */}
+        <div className="p-4 bg-[#2b2d31] border-t border-[#1e1f22] flex items-center gap-2">
+          <button
+            onClick={() => chatFileRef.current?.click()}
+            className="text-[#8e9297] hover:text-white transition-colors flex-shrink-0"
+          >
+            <Icon name="Image" size={20} />
+          </button>
+          <input
+            ref={chatFileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) readFile(f, setChatImage);
+            }}
+          />
+          <input
+            className="flex-1 bg-[#383a40] text-white rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] placeholder-[#5c5f66]"
+            placeholder="Написать сообщение..."
+            value={chatText}
+            onChange={(e) => setChatText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          />
+          <button
+            onMouseDown={startRecording}
+            onMouseUp={stopRecording}
+            onTouchStart={startRecording}
+            onTouchEnd={stopRecording}
+            className={`flex-shrink-0 transition-colors ${recording ? "text-[#ed4245]" : "text-[#8e9297] hover:text-white"}`}
+          >
+            <Icon name="Mic" size={20} />
+          </button>
+          <button
+            onClick={sendMessage}
+            className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-white transition-all hover:opacity-90"
+            style={{ background: WAVE_ACCENT }}
+          >
+            <Icon name="Send" size={18} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MAIN APP
+  // ─────────────────────────────────────────────────────────────────────────
+  const renderTab = () => {
+    // ── CHATS ──────────────────────────────────────────────────────────────
+    if (activeTab === "chats") {
+      return (
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-4 pb-2">
+            <h2 className="text-white text-xl font-bold mb-4">Сообщения</h2>
           </div>
-          <div className="w-8 h-[2px] bg-[#36393f] rounded-full"></div>
-          {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className="w-12 h-12 bg-[#36393f] rounded-3xl hover:rounded-xl transition-all duration-200 flex items-center justify-center cursor-pointer hover:bg-[#5865f2]"
+          {chatList.length === 0 && (
+            <div className="text-center text-[#8e9297] text-sm mt-16 px-6">
+              Нет чатов. Найдите пользователей в контактах!
+            </div>
+          )}
+          {chatList.map(({ user, last }) => (
+            <button
+              key={user.id}
+              onClick={() => setOpenChatUserId(user.id)}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#383a40] transition-colors"
             >
-              <span className="text-[#dcddde] text-sm font-medium">{i}</span>
+              <Avatar user={user} size={48} showOnline />
+              <div className="flex-1 min-w-0 text-left">
+                <div className="flex items-center justify-between">
+                  <span className="text-white font-semibold text-sm truncate">
+                    {user.rainbowNick ? <RainbowText text={user.name} /> : user.name}
+                  </span>
+                  {last && (
+                    <span className="text-[#8e9297] text-xs flex-shrink-0 ml-2">
+                      {formatTime(last.timestamp)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[#8e9297] text-xs truncate mt-0.5">
+                  {last
+                    ? last.audio
+                      ? "🎤 Голосовое"
+                      : last.image
+                      ? "📷 Фото"
+                      : last.text
+                    : "Нет сообщений"}
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    // ── CONTACTS ────────────────────────────────────────────────────────────
+    if (activeTab === "contacts") {
+      const sorted = [...users]
+        .filter((u) => u.id !== currentUser.id)
+        .sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0));
+      return (
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-4 pb-2">
+            <h2 className="text-white text-xl font-bold mb-4">Контакты</h2>
+          </div>
+          {sorted.map((u) => (
+            <div key={u.id} className="flex items-center gap-3 px-4 py-3">
+              <Avatar user={u} size={48} showOnline />
+              <div className="flex-1 min-w-0">
+                <div className="text-white font-semibold text-sm">
+                  {u.rainbowNick ? <RainbowText text={u.name} /> : u.name}
+                </div>
+                <div className="text-[#8e9297] text-xs">{u.username}</div>
+              </div>
+              <button
+                onClick={() => setOpenChatUserId(u.id)}
+                className="text-[#6C63FF] hover:text-[#a855f7] transition-colors"
+              >
+                <Icon name="MessageCircle" size={20} />
+              </button>
             </div>
           ))}
         </div>
+      );
+    }
 
-        {/* Основной контент */}
-        <div className="flex-1 flex flex-col lg:flex-row">
-          {/* Боковая панель каналов */}
-          <div
-            className={`${mobileSidebarOpen ? "block" : "hidden"} lg:block w-full lg:w-60 bg-[#2f3136] flex flex-col`}
-          >
-            <div className="p-4 border-b border-[#202225] flex items-center justify-between">
-              <h2 className="text-white font-semibold text-base">Сервер Дискордик</h2>
-              <Button
-                variant="ghost"
-                className="lg:hidden text-[#b9bbbe] hover:text-white hover:bg-[#40444b] p-1"
-                onClick={() => setMobileSidebarOpen(false)}
-              >
-                <X className="w-4 h-4" />
-              </Button>
+    // ── AI ──────────────────────────────────────────────────────────────────
+    if (activeTab === "ai") {
+      return (
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="text-center">
+            <div
+              className="w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-6"
+              style={{ background: "linear-gradient(135deg,#6C63FF,#a855f7)" }}
+            >
+              <Icon name="Bot" size={40} />
             </div>
-            <div className="flex-1 p-2">
-              <div className="mb-4">
-                <div className="flex items-center gap-1 px-2 py-1 text-[#8e9297] text-xs font-semibold uppercase tracking-wide">
-                  <ArrowRight className="w-3 h-3" />
-                  <span>Текстовые каналы</span>
-                </div>
-                <div className="mt-1 space-y-0.5">
-                  {["общий", "новости", "витрина", "помощь"].map((channel) => (
-                    <div
-                      key={channel}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded text-[#8e9297] hover:text-[#dcddde] hover:bg-[#393c43] cursor-pointer"
-                    >
-                      <Hash className="w-4 h-4" />
-                      <span className="text-sm">{channel}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center gap-1 px-2 py-1 text-[#8e9297] text-xs font-semibold uppercase tracking-wide">
-                  <ArrowRight className="w-3 h-3" />
-                  <span>Голосовые каналы</span>
-                </div>
-                <div className="mt-1 space-y-0.5">
-                  {["Общий", "Обзор дизайна"].map((channel) => (
-                    <div
-                      key={channel}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded text-[#8e9297] hover:text-[#dcddde] hover:bg-[#393c43] cursor-pointer"
-                    >
-                      <Mic className="w-4 h-4" />
-                      <span className="text-sm">{channel}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            {/* Область пользователя */}
-            <div className="p-2 bg-[#292b2f] flex items-center gap-2">
-              <div className="w-8 h-8 bg-[#5865f2] rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-medium">А</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-white text-sm font-medium truncate">Алексей</div>
-                <div className="text-[#b9bbbe] text-xs truncate">#1234</div>
-              </div>
-              <div className="flex gap-1">
-                <Button variant="ghost" size="sm" className="w-8 h-8 p-0 hover:bg-[#40444b]">
-                  <Mic className="w-4 h-4 text-[#b9bbbe]" />
-                </Button>
-                <Button variant="ghost" size="sm" className="w-8 h-8 p-0 hover:bg-[#40444b]">
-                  <Settings className="w-4 h-4 text-[#b9bbbe]" />
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* Область чата */}
-          <div className="flex-1 flex flex-col">
-            {/* Заголовок чата */}
-            <div className="h-12 bg-[#36393f] border-b border-[#202225] flex items-center px-4 gap-2">
-              <Button
-                variant="ghost"
-                className="lg:hidden text-[#8e9297] hover:text-[#dcddde] hover:bg-[#40444b] p-1 mr-2"
-                onClick={() => setMobileSidebarOpen(true)}
-              >
-                <Menu className="w-5 h-5" />
-              </Button>
-              <Hash className="w-5 h-5 text-[#8e9297]" />
-              <span className="text-white font-semibold">витрина</span>
-              <div className="w-px h-6 bg-[#40444b] mx-2 hidden sm:block"></div>
-              <span className="text-[#8e9297] text-sm hidden sm:block">Показывай свою работу в Figma с Дискордик</span>
-              <div className="ml-auto flex items-center gap-2 sm:gap-4">
-                <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-[#b9bbbe] cursor-pointer hover:text-[#dcddde]" />
-                <Users className="w-4 h-4 sm:w-5 sm:h-5 text-[#b9bbbe] cursor-pointer hover:text-[#dcddde]" />
-                <Search className="w-4 h-4 sm:w-5 sm:h-5 text-[#b9bbbe] cursor-pointer hover:text-[#dcddde]" />
-              </div>
-            </div>
-
-            {/* Сообщения чата */}
-            <div className="flex-1 p-2 sm:p-4 space-y-4 sm:space-y-6 overflow-y-auto">
-              {/* Приветственное сообщение */}
-              <div className="flex gap-2 sm:gap-4">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#5865f2] rounded-full flex items-center justify-center flex-shrink-0">
-                  <Monitor className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-white font-medium text-sm sm:text-base">Дискордик Бот</span>
-                    <span className="bg-[#5865f2] text-white text-xs px-1 rounded">БОТ</span>
-                    <span className="text-[#72767d] text-xs hidden sm:inline">Сегодня в 12:00</span>
-                  </div>
-                  <div className="text-[#dcddde] text-sm sm:text-base">
-                    <p className="mb-3 sm:mb-4">
-                      <strong>Добро пожаловать в Дискордик!</strong> Показывай свой прогресс в Figma прямо в Discord.
-                    </p>
-                    <div className="bg-[#2f3136] border-l-4 border-[#5865f2] p-3 sm:p-4 rounded">
-                      <h3 className="text-white font-semibold mb-2 text-sm sm:text-base">Что умеет Дискордик:</h3>
-                      <ul className="space-y-1 text-xs sm:text-sm text-[#b9bbbe]">
-                        <li>Автоматически определяет Figma в браузере и приложении</li>
-                        <li>Показывает название текущего проекта/файла</li>
-                        <li>Обновляется каждые 5 секунд в реальном времени</li>
-                        <li>Очищает статус при простое</li>
-                        <li>Работает на всех платформах</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Сообщение пользователя с Rich Presence */}
-              <div className="flex gap-2 sm:gap-4">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
-                  <span className="text-white text-xs sm:text-sm font-medium">М</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-white font-medium text-sm sm:text-base">Мария Дизайнер</span>
-                    <span className="text-[#72767d] text-xs hidden sm:inline">Сегодня в 12:05</span>
-                  </div>
-                  <div className="text-[#dcddde] mb-3 text-sm sm:text-base">
-                    Только начала работу над новым дизайном лендинга!
-                  </div>
-
-                  {/* Демо Rich Presence */}
-                  <div className="bg-[#2f3136] border border-[#202225] rounded-lg overflow-hidden w-full max-w-sm">
-                    {/* Заголовок профиля */}
-                    <div className="h-16 sm:h-20 bg-gradient-to-r from-[#5865f2] to-[#7c3aed] relative">
-                      <div className="absolute -bottom-3 sm:-bottom-4 left-3 sm:left-4">
-                        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-4 border-[#2f3136] bg-[#36393f] overflow-hidden">
-                          <div className="w-full h-full bg-gradient-to-br from-[#4f46e5] to-[#7c3aed] flex items-center justify-center">
-                            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-[#2f3136] rounded-full flex items-center justify-center">
-                              <span className="text-lg sm:text-2xl">M</span>
-                            </div>
-                          </div>
-                          <div className="absolute -bottom-1 -right-1 w-5 h-5 sm:w-6 sm:h-6 bg-[#3ba55c] border-4 border-[#2f3136] rounded-full"></div>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        className="absolute top-2 sm:top-4 right-2 sm:right-4 bg-[#4f545c] hover:bg-[#5d6269] text-white text-xs px-2 sm:px-3 py-1 rounded"
-                      >
-                        <Settings className="w-3 h-3 mr-1" />
-                        <span className="hidden sm:inline">Профиль</span>
-                      </Button>
-                    </div>
-
-                    {/* Информация профиля */}
-                    <div className="pt-4 sm:pt-6 px-3 sm:px-4 pb-3 sm:pb-4">
-                      <div className="mb-3 sm:mb-4">
-                        <h3 className="text-white text-lg sm:text-xl font-bold mb-1">Мария</h3>
-                        <div className="flex items-center gap-2 text-[#b9bbbe] text-xs sm:text-sm">
-                          <span>maria_design</span>
-                          <span>-</span>
-                          <span>Она</span>
-                          <div className="flex gap-1 ml-2">
-                            <div className="w-3 h-3 sm:w-4 sm:h-4 bg-[#5865f2] rounded-sm"></div>
-                            <div className="w-3 h-3 sm:w-4 sm:h-4 bg-[#3ba55c] rounded-sm"></div>
-                            <div className="w-3 h-3 sm:w-4 sm:h-4 bg-[#faa61a] rounded-sm"></div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Статусное сообщение */}
-                      <div className="mb-3 sm:mb-4">
-                        <div className="bg-[#36393f] rounded-lg p-2 sm:p-3 relative">
-                          <div className="absolute -top-2 left-3 sm:left-4 w-4 h-4 bg-[#36393f] rotate-45"></div>
-                          <div className="flex items-center gap-2 text-[#dcddde] text-xs sm:text-sm">
-                            <div className="w-3 h-3 sm:w-4 sm:h-4 bg-[#5865f2] rounded-full flex items-center justify-center">
-                              <span className="text-xs">*</span>
-                            </div>
-                            <span>Работаю над проектом...</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Вкладки */}
-                      <div className="flex border-b border-[#40444b] mb-3 sm:mb-4">
-                        <button className="px-3 sm:px-4 py-2 text-[#8e9297] text-xs sm:text-sm font-medium hover:text-[#dcddde]">
-                          Обо мне
-                        </button>
-                        <button className="px-3 sm:px-4 py-2 text-white text-xs sm:text-sm font-medium border-b-2 border-[#5865f2]">
-                          Активность
-                        </button>
-                      </div>
-
-                      {/* Активность Дискордик */}
-                      <div>
-                        <div className="flex items-center gap-2 text-[#8e9297] text-xs font-semibold uppercase tracking-wide mb-2 sm:mb-3">
-                          <span>Играет</span>
-                        </div>
-
-                        <div className="flex items-start gap-2 sm:gap-3 p-2 sm:p-3 bg-[#36393f] rounded-lg">
-                          {/* Логотип Figma */}
-                          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#ff7262] to-[#f24e1e] rounded-lg flex items-center justify-center flex-shrink-0">
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M15.852 8.981h-4.588V0h4.588c2.476 0 4.49 2.014 4.49 4.49s-2.014 4.491-4.49 4.491zM12.735 7.51h3.117c1.665 0 3.019-1.355 3.019-3.019s-1.354-3.019-3.019-3.019h-3.117V7.51zm0 1.471H8.148c-2.476 0-4.49-2.015-4.49-4.49S5.672 0 8.148 0h4.588v8.981zm-4.587-7.51c-1.665 0-3.019 1.355-3.019 3.019s1.354 3.02 3.019 3.02h3.117V1.471H8.148zm4.587 15.019H8.148c-2.476 0-4.49-2.014-4.49-4.49s2.014-4.49 4.49-4.49h4.588v8.98zM8.148 8.981c-1.665 0-3.019 1.355-3.019 3.019s1.355 3.019 3.019 3.019h3.117V8.981H8.148zM8.172 24c-2.489 0-4.515-2.014-4.515-4.49s2.014-4.49 4.49-4.49h4.588v4.441c0 2.503-2.047 4.539-4.563 4.539zm-.024-7.51a3.023 3.023 0 0 0-3.019 3.019c0 1.665 1.365 3.019 3.044 3.019 1.705 0 3.093-1.376 3.093-3.068v-2.97H8.148z" />
-                            </svg>
-                          </div>
-
-                          {/* Детали активности */}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-white font-semibold text-xs sm:text-sm mb-1">Дискордик</div>
-                            <div className="text-[#dcddde] text-xs sm:text-sm mb-1">Работаю над логотипом</div>
-                            <div className="text-[#b9bbbe] text-xs sm:text-sm mb-2">Figma Desktop</div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 bg-[#3ba55c] rounded-full animate-pulse"></div>
-                              <span className="text-[#3ba55c] text-xs font-medium">0:37 прошло</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Еще одно сообщение пользователя */}
-              <div className="flex gap-2 sm:gap-4">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
-                  <span className="text-white text-xs sm:text-sm font-medium">И</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-white font-medium text-sm sm:text-base">Иван UX</span>
-                    <span className="text-[#72767d] text-xs hidden sm:inline">Сегодня в 12:08</span>
-                  </div>
-                  <div className="text-[#dcddde] text-sm sm:text-base">
-                    Обожаю видеть прогресс всех! Дискордик делает общение таким удобным
-                  </div>
-                </div>
-              </div>
-
-              {/* Секция "Начало работы" */}
-              <div className="bg-[#2f3136] border border-[#202225] rounded-lg p-4 sm:p-6 mt-6 sm:mt-8">
-                <h2 className="text-xl sm:text-2xl font-bold text-white mb-4 flex items-center gap-2">
-                  <Download className="w-5 h-5 sm:w-6 sm:h-6 text-[#5865f2]" />
-                  Начни работу с Дискордик
-                </h2>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
-                  <div className="text-center">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#5865f2] rounded-full flex items-center justify-center mx-auto mb-3">
-                      <span className="text-white font-bold text-sm sm:text-base">1</span>
-                    </div>
-                    <h3 className="text-white font-medium mb-2 text-sm sm:text-base">Скачай приложение</h3>
-                    <p className="text-[#b9bbbe] text-xs sm:text-sm">Получи Дискордик для Windows, macOS или Linux</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#5865f2] rounded-full flex items-center justify-center mx-auto mb-3">
-                      <span className="text-white font-bold text-sm sm:text-base">2</span>
-                    </div>
-                    <h3 className="text-white font-medium mb-2 text-sm sm:text-base">Авторизуй Discord</h3>
-                    <p className="text-[#b9bbbe] text-xs sm:text-sm">Подключись безопасно через OAuth</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#5865f2] rounded-full flex items-center justify-center mx-auto mb-3">
-                      <span className="text-white font-bold text-sm sm:text-base">3</span>
-                    </div>
-                    <h3 className="text-white font-medium mb-2 text-sm sm:text-base">Начни дизайнить</h3>
-                    <p className="text-[#b9bbbe] text-xs sm:text-sm">Открой Figma и смотри как работает магия</p>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                  <Button className="bg-[#5865f2] hover:bg-[#4752c4] text-white px-6 sm:px-8 py-2 sm:py-3 rounded text-sm font-medium">
-                    <Download className="w-4 h-4 mr-2" />
-                    Скачать Дискордик
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="border-[#4f545c] text-[#b9bbbe] hover:bg-[#40444b] hover:border-[#6d6f78] px-6 sm:px-8 py-2 sm:py-3 rounded text-sm font-medium bg-transparent"
-                  >
-                    <Shield className="w-4 h-4 mr-2" />
-                    Авторизовать Discord
-                  </Button>
-                </div>
-              </div>
-
-              {/* Преимущества */}
-              <div className="bg-[#2f3136] border border-[#202225] rounded-lg p-4 sm:p-6">
-                <h3 className="text-lg sm:text-xl font-bold text-white mb-4">Почему Дискордик?</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  {[
-                    {
-                      icon: <Zap className="w-4 h-4 sm:w-5 sm:h-5" />,
-                      title: "Автоопределение",
-                      desc: "Работает с приложением и браузером",
-                    },
-                    {
-                      icon: <Eye className="w-4 h-4 sm:w-5 sm:h-5" />,
-                      title: "Умное отслеживание",
-                      desc: "Показывает имена проектов и статус",
-                    },
-                    {
-                      icon: <Clock className="w-4 h-4 sm:w-5 sm:h-5" />,
-                      title: "Обновление в реальном времени",
-                      desc: "Синхронизация каждые 5 секунд",
-                    },
-                    {
-                      icon: <Shield className="w-4 h-4 sm:w-5 sm:h-5" />,
-                      title: "Приватность прежде всего",
-                      desc: "Никакого сбора данных",
-                    },
-                  ].map((feature, index) => (
-                    <div
-                      key={index}
-                      className="flex items-start gap-2 sm:gap-3 p-2 sm:p-3 rounded hover:bg-[#36393f] transition-colors"
-                    >
-                      <div className="text-[#5865f2] mt-0.5">{feature.icon}</div>
-                      <div>
-                        <div className="text-white font-medium text-xs sm:text-sm">{feature.title}</div>
-                        <div className="text-[#b9bbbe] text-xs sm:text-sm">{feature.desc}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Поле ввода сообщения */}
-            <div className="p-2 sm:p-4">
-              <div className="bg-[#40444b] rounded-lg px-3 sm:px-4 py-2 sm:py-3">
-                <div className="text-[#72767d] text-xs sm:text-sm">Сообщение #витрина</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Боковая панель участников - скрыта на мобильных/планшетах */}
-          <div className="hidden xl:block w-60 bg-[#2f3136] p-4">
-            <div className="mb-4">
-              <h3 className="text-[#8e9297] text-xs font-semibold uppercase tracking-wide mb-2">В сети - 3</h3>
-              <div className="space-y-2">
-                {[
-                  {
-                    name: "Мария Дизайнер",
-                    status: "Работает в Figma",
-                    avatar: "М",
-                    color: "from-purple-500 to-pink-500",
-                  },
-                  { name: "Иван UX", status: "В сети", avatar: "И", color: "from-green-500 to-blue-500" },
-                  { name: "Алексей", status: "Разрабатывает Дискордик", avatar: "А", color: "from-blue-500 to-purple-500" },
-                ].map((user, index) => (
-                  <div key={index} className="flex items-center gap-3 p-2 rounded hover:bg-[#36393f] cursor-pointer">
-                    <div
-                      className={`w-8 h-8 bg-gradient-to-r ${user.color} rounded-full flex items-center justify-center relative`}
-                    >
-                      <span className="text-white text-sm font-medium">{user.avatar}</span>
-                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#3ba55c] border-2 border-[#2f3136] rounded-full"></div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-white text-sm font-medium truncate">{user.name}</div>
-                      <div className="text-[#b9bbbe] text-xs truncate">{user.status}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <h2 className="text-white text-xl font-bold mb-3">ИИ-помощник</h2>
+            <p className="text-[#8e9297] text-sm leading-relaxed max-w-xs">
+              Наш ИИ-помощник уехал на Бали и пока не может работать, но мы надеемся, что через неделю он вернётся 🌴
+            </p>
           </div>
         </div>
+      );
+    }
+
+    // ── ADMIN ────────────────────────────────────────────────────────────────
+    if (activeTab === "admin" && currentUser.isAdmin) {
+      const filtered = users.filter(
+        (u) =>
+          u.id !== currentUser.id &&
+          (u.name.toLowerCase().includes(adminSearch.toLowerCase()) ||
+            u.username.toLowerCase().includes(adminSearch.toLowerCase()))
+      );
+      return (
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-4">
+            <h2 className="text-white text-xl font-bold mb-4">Админ-панель</h2>
+            <input
+              className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] placeholder-[#5c5f66] mb-4"
+              placeholder="Поиск пользователей..."
+              value={adminSearch}
+              onChange={(e) => setAdminSearch(e.target.value)}
+            />
+            {filtered.map((u) => (
+              <div key={u.id} className="bg-[#383a40] rounded-xl p-4 mb-3">
+                <div className="flex items-center gap-3 mb-3">
+                  <Avatar user={u} size={40} showOnline />
+                  <div>
+                    <div className="text-white font-semibold text-sm">
+                      {u.rainbowNick ? <RainbowText text={u.name} /> : u.name}
+                    </div>
+                    <div className="text-[#8e9297] text-xs">{u.username}</div>
+                    {u.banned && (
+                      <span className="text-[#ed4245] text-xs font-semibold">🚫 Заблокирован</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <button
+                    onClick={() => adminBan(u.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-all ${
+                      u.banned ? "bg-[#3ba55c]" : "bg-[#ed4245]"
+                    }`}
+                  >
+                    {u.banned ? "Разбанить" : "Забанить"}
+                  </button>
+                  <button
+                    onClick={() => adminRainbow(u.id)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+                    style={{
+                      background:
+                        "linear-gradient(90deg,#ff0000,#ff7700,#ffff00,#00ff00,#0000ff,#8b00ff)",
+                    }}
+                  >
+                    {u.rainbowNick ? "Убрать радугу" : "Дать радугу"}
+                  </button>
+                  <button
+                    onClick={() => setAdminViewChatId(adminViewChatId === u.id ? null : u.id)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-[#6C63FF]"
+                  >
+                    {adminViewChatId === u.id ? "Скрыть чат" : "Смотреть чат"}
+                  </button>
+                  <button
+                    onClick={() =>
+                      setAdminBadgeUserId(adminBadgeUserId === u.id ? null : u.id)
+                    }
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-[#faa61a]"
+                  >
+                    Бейджи
+                  </button>
+                </div>
+
+                {adminBadgeUserId === u.id && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {availableBadges.map((badge) => {
+                      const has = u.badges.find((b) => b.id === badge.id);
+                      return (
+                        <button
+                          key={badge.id}
+                          onClick={() => adminGiveBadge(u.id, badge)}
+                          className="px-2 py-1 rounded-full text-xs font-semibold text-white transition-all"
+                          style={{
+                            background: badge.color,
+                            opacity: has ? 1 : 0.4,
+                          }}
+                        >
+                          {has ? "✓ " : "+ "}
+                          {badge.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {adminViewChatId === u.id && (
+                  <div className="bg-[#2b2d31] rounded-xl p-3 max-h-48 overflow-y-auto space-y-2">
+                    {getConversation(u.id).length === 0 && (
+                      <p className="text-[#8e9297] text-xs">Нет сообщений</p>
+                    )}
+                    {getConversation(u.id).map((m) => (
+                      <div key={m.id} className="text-xs">
+                        <span className="text-[#6C63FF] font-semibold">
+                          {m.fromId === currentUser.id ? "Вы" : u.name}:{" "}
+                        </span>
+                        <span className="text-[#dcddde]">
+                          {m.audio ? "🎤 Голосовое" : m.image ? "📷 Фото" : m.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // ── SETTINGS ─────────────────────────────────────────────────────────────
+    if (activeTab === "settings") {
+      return (
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-4">
+            <h2 className="text-white text-xl font-bold mb-6">Настройки</h2>
+
+            {/* Avatar */}
+            <div className="flex justify-center mb-6">
+              <button onClick={() => settingsAvatarRef.current?.click()} className="relative group">
+                <Avatar
+                  user={{ name: currentUser.name, avatar: settingsAvatar }}
+                  size={80}
+                />
+                <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Icon name="Camera" size={24} />
+                </div>
+                <input
+                  ref={settingsAvatarRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) readFile(f, setSettingsAvatar);
+                  }}
+                />
+              </button>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <div>
+                <label className="text-[#8e9297] text-xs font-semibold uppercase tracking-wider mb-1 block">
+                  Имя
+                </label>
+                <input
+                  className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF]"
+                  value={settingsName}
+                  onChange={(e) => setSettingsName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[#8e9297] text-xs font-semibold uppercase tracking-wider mb-1 block">
+                  Юзернейм (не изменяется)
+                </label>
+                <input
+                  disabled
+                  className="w-full bg-[#1e1f22] text-[#5c5f66] rounded-xl px-4 py-3 text-sm cursor-not-allowed"
+                  value={currentUser.username}
+                />
+              </div>
+              <div>
+                <label className="text-[#8e9297] text-xs font-semibold uppercase tracking-wider mb-1 block">
+                  О себе
+                </label>
+                <textarea
+                  className="w-full bg-[#1e1f22] text-white rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#6C63FF] resize-none"
+                  rows={3}
+                  value={settingsBio}
+                  onChange={(e) => setSettingsBio(e.target.value)}
+                  placeholder="Расскажите о себе..."
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={saveSettings}
+              className="w-full py-3 rounded-xl text-white font-semibold mb-3 transition-all hover:opacity-90"
+              style={{ background: "linear-gradient(135deg,#6C63FF,#a855f7)" }}
+            >
+              Сохранить
+            </button>
+
+            <button
+              onClick={handleLogout}
+              className="w-full py-3 rounded-xl text-[#ed4245] font-semibold border border-[#ed4245]/30 hover:bg-[#ed4245]/10 transition-all"
+            >
+              Выйти из аккаунта
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // BOTTOM NAV + LAYOUT
+  // ─────────────────────────────────────────────────────────────────────────
+  const tabs: { id: Tab; icon: string; label: string; adminOnly?: boolean }[] = [
+    { id: "contacts", icon: "Users", label: "Контакты" },
+    { id: "chats", icon: "MessageCircle", label: "Чаты" },
+    { id: "ai", icon: "Bot", label: "ИИ" },
+    ...(currentUser.isAdmin
+      ? [{ id: "admin" as Tab, icon: "Shield", label: "Админ", adminOnly: true }]
+      : []),
+    { id: "settings", icon: "Settings", label: "Настройки" },
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#313338] flex flex-col max-w-lg mx-auto relative">
+      {/* Header */}
+      <div className="h-14 bg-[#2b2d31] border-b border-[#1e1f22] flex items-center px-4 justify-between flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg,#6C63FF,#a855f7)" }}
+          >
+            <span className="text-white text-xs font-black">19</span>
+          </div>
+          <span className="text-white font-bold text-lg">19 wave</span>
+        </div>
+        <button onClick={() => setViewProfileId(currentUser.id)}>
+          <Avatar user={currentUser} size={36} showOnline />
+        </button>
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 flex flex-col overflow-hidden">{renderTab()}</div>
+
+      {/* Bottom navigation */}
+      <div className="bg-[#2b2d31] border-t border-[#1e1f22] flex items-center justify-around px-2 py-2 flex-shrink-0">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all ${
+              activeTab === tab.id
+                ? "text-white"
+                : "text-[#8e9297] hover:text-[#dcddde]"
+            }`}
+          >
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                activeTab === tab.id ? "bg-[#6C63FF]" : "hover:bg-[#383a40]"
+              }`}
+            >
+              <Icon name={tab.icon} fallback="Circle" size={20} />
+            </div>
+            <span className="text-xs font-medium">{tab.label}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
